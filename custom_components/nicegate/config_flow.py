@@ -24,7 +24,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Required("host"): str,
         vol.Required("mac"): str,
         vol.Optional("username"): str,
-        #vol.Optional("password"): str,
+        vol.Optional("password"): str,
     }
 )
 
