@@ -40,8 +40,8 @@ def _norm_mac(value: str) -> str:
 
 async def async_fetch_credentials(
     session: aiohttp.ClientSession, email: str, password: str, mac: str
-) -> tuple[str, str]:
-    """Return (username, base64 password) of the IT4WIFI with given MAC."""
+) -> tuple[str, str, str | None]:
+    """Return (username, base64 password, controllerID) of the IT4WIFI with given MAC."""
     try:
         async with session.post(
             f"{BASE_URL}oauth/token",
@@ -85,5 +85,5 @@ async def async_fetch_credentials(
                 raise MyNiceCloudError("Unexpected password format") from err
             if username:
                 _LOGGER.debug("Credentials for %s loaded from MyNice cloud", mac)
-                return username, b64_pwd
+                return username, b64_pwd, rec.get("controllerID")
     raise MyNiceCloudNotFound(f"No credentials for {mac}")
