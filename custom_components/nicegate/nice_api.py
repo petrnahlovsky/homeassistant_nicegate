@@ -17,11 +17,13 @@ _LOGGER = logging.getLogger("nicegate")
 class NiceGateApi:
     """API for Nice Gate communication."""
 
-    def __init__(self, host, mac, username, pwd):
+    def __init__(self, host, mac, username, pwd, source=None):
         """Initialize API for Nice gate."""
         self.host = host
         self.target = mac
-        self.source = f"python_{username}"
+        # Cloud users (new MyNice app) are identified by controllerID and skip VERIFY
+        self.skip_verify = bool(source)
+        self.source = source if source else f"python_{username}"
         self.username = username
         self.descr = "Home assistant integration"
         self.pwd = pwd
@@ -269,6 +271,24 @@ class NiceGateApi:
             await asyncio.sleep(0.01)
             reader, writer = await asyncio.open_connection(self.host, 443, ssl=ctx)
 
+            if self.skip_verify:
+                msg=self.__build_message(
+                    "CONNECT",
+                    '<Authentication username="{}" cc="{}"/>'.format(
+                        self.username, self.client_challenge
+                    ),
+                )
+                writer.write(msg)
+                await writer.drain()
+                connect = await self.__recvall(reader)
+                if "<Error" in connect or "sc=" not in connect:
+                    _LOGGER.warning("CONNECT rejected: %s", connect)
+                else:
+                    self.__find_server_challenge(connect)
+                    status="connect"
+                writer.close()
+                return status
+
             msg=self.__build_message("VERIFY", f'<User username="{self.username}"/>')
             writer.write(msg)
             await writer.drain()
@@ -326,10 +346,13 @@ class NiceGateApi:
             self.serv_reader = reader
             self.serv_writer = writer
 
-            msg=self.__build_message("VERIFY", f'<User username="{self.username}"/>')
-            self.serv_writer.write(msg)
-            await self.serv_writer.drain()
-            verify = await self.__recvall()
+            if self.skip_verify:
+                verify = "Authentication id=0"
+            else:
+                msg=self.__build_message("VERIFY", f'<User username="{self.username}"/>')
+                self.serv_writer.write(msg)
+                await self.serv_writer.drain()
+                verify = await self.__recvall()
             if re.search(r'Authentication\sid=[\'"]?([^\'" >]+)', verify):
                 msg=self.__build_message(
                     "CONNECT",
