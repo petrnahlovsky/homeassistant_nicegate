@@ -35,6 +35,8 @@ class NiceGateApi:
         self.command_id = 0
         self.session_id = 1
         self.gate_status = None
+        # Hex bitmask of supported T4 commands, reported by IT4WIFI (None = unknown)
+        self.t4_allowed: int | None = None
         self.serv_reader: asyncio.StreamReader = None
         self.serv_writer: asyncio.StreamWriter = None
         self._keep_alive_task: asyncio.Task = None
@@ -192,6 +194,12 @@ class NiceGateApi:
     async def __process_event(self, msg):
         _LOGGER.debug(msg)
         resp = ET.fromstring(msg)
+        t4 = resp.find("./Devices/Device/Properties/T4_allowed")
+        if t4 is not None and t4.get("values"):
+            try:
+                self.t4_allowed = int(t4.get("values"), 16)
+            except ValueError:
+                _LOGGER.debug("Unexpected T4_allowed value %s", t4.get("values"))
         if resp.tag == "Event":
             if resp.attrib.get("type") == "CHANGE":
                 self.gate_status = resp.findtext(
@@ -399,6 +407,22 @@ class NiceGateApi:
             )
             self.serv_writer.write(msg)
             await self.serv_writer.drain()
+
+    async def t4(self, code: str):
+        """Send T4 command (e.g. MDAx = step by step)."""
+        if await self._ensure_connected():
+            msg = self.__build_message(
+                "CHANGE",
+                f'<Devices><Device id="1">\n<Services><T4Action>{code}</T4Action>\n</Services ></Device></Devices>',
+            )
+            self.serv_writer.write(msg)
+            await self.serv_writer.drain()
+
+    def t4_supported(self, bit: int) -> bool:
+        """Return True if T4 command is supported or support is unknown."""
+        if self.t4_allowed is None:
+            return True
+        return bool(self.t4_allowed & (1 << bit))
 
     async def check(self):
         """Ping for prevent sokcet close."""
