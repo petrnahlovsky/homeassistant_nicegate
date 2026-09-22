@@ -5,10 +5,13 @@
         "data": {
           "host": "Host",
           "mac": "MAC address",
-          "username": "Username"
+          "username": "Username",
+          "mynice_email": "MyNice e-mail (optional)",
+          "mynice_password": "MyNice password (optional)"
         },
         "data_description": {
-          "username": "Required only in special cases. Don't use existing username!"
+          "username": "Required only in special cases. Don't use existing username!",
+          "mynice_email": "Load gate credentials from your MyNice account. Pairing is skipped. The password is not stored."
         }
       },
       "pair": {
@@ -22,7 +25,10 @@
       "cannot_connect": "Failed to connect",
       "invalid_auth": "Invalid authentication",
       "unknown": "Unexpected error",
-      "waiting_permission": "Waiting for permission to connect. Open mobile app and allow user to connect, than retry here."
+      "waiting_permission": "Waiting for permission to connect. Open mobile app and allow user to connect, than retry here.",
+      "cloud_auth": "MyNice login failed, check e-mail and password.",
+      "cloud_not_found": "No IT4WIFI with this MAC address found in the MyNice account.",
+      "cloud_error": "MyNice cloud is not reachable, see the log."
     },
     "abort": {
       "already_configured": "Device is already configured"
