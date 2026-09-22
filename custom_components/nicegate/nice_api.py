@@ -222,6 +222,7 @@ class NiceGateApi:
             ctx.check_hostname = False
             ctx.options |= 0x4  # ssl.OP_LEGACY_SERVER_CONNECT
             ctx.set_ciphers("DEFAULT:@SECLEVEL=0")
+            ctx.maximum_version = ssl.TLSVersion.TLSv1_2
 
             await asyncio.sleep(0.01)
             reader, writer = await asyncio.open_connection(self.host, 443, ssl=ctx)
@@ -263,6 +264,7 @@ class NiceGateApi:
             ctx.check_hostname = False
             ctx.options |= 0x4  # ssl.OP_LEGACY_SERVER_CONNECT
             ctx.set_ciphers("DEFAULT:@SECLEVEL=0")
+            ctx.maximum_version = ssl.TLSVersion.TLSv1_2
 
             await asyncio.sleep(0.01)
             reader, writer = await asyncio.open_connection(self.host, 443, ssl=ctx)
@@ -310,6 +312,7 @@ class NiceGateApi:
             ctx.check_hostname = False
             ctx.options |= 0x4  # ssl.OP_LEGACY_SERVER_CONNECT
             ctx.set_ciphers("DEFAULT:@SECLEVEL=0")
+            ctx.maximum_version = ssl.TLSVersion.TLSv1_2
             
             if self.serv_writer is not None or self.serv_reader is not None:
                 await self.disconnect()
