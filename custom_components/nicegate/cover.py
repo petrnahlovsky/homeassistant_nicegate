@@ -13,6 +13,7 @@ from homeassistant.components.cover import CoverDeviceClass, CoverEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_CLOSED, STATE_CLOSING, STATE_OPEN, STATE_OPENING
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
@@ -97,6 +98,7 @@ class NiceGate(CoordinatorEntity, CoverEntity):
         """Initialize an NiceGate."""
         self._attr_unique_id = device_id
         self._device_id = device_id
+        self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, device_id)}, name="Nice gate", manufacturer="Nice")
         super().__init__(coordinator, context=device_id)
         self._state: str | None = None
         self._state_before_move: str | None = None
@@ -154,4 +156,3 @@ class NiceGate(CoordinatorEntity, CoverEntity):
             status = self.coordinator.data
             self._state = STATES_MAP.get(status)
             self.async_write_ha_state()
-
