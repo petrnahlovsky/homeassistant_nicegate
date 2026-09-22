@@ -9,7 +9,7 @@ from .const import DOMAIN
 from .nice_api import NiceGateApi
 
 # List the platforms that you want to support.
-PLATFORMS: list[Platform] = [Platform.COVER]
+PLATFORMS: list[Platform] = [Platform.COVER, Platform.BUTTON]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
