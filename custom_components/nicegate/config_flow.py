@@ -76,7 +76,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         errors: dict[str, str] = {}
         try:
-            username, pwd = await async_fetch_credentials(
+            username, pwd, source = await async_fetch_credentials(
                 async_get_clientsession(self.hass), email, cloud_password, data["mac"]
             )
         except MyNiceCloudAuthError:
@@ -97,6 +97,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         self.data["username"] = username
         self.data["password"] = pwd
+        self.data["source"] = source
         state = await self.verify_connect(self.data)
         if state is None:
             return self.async_show_form(
@@ -184,7 +185,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             host,
             mac,
             username,
-            pwd
+            pwd,
+            data.get("source"),
         )
 
         connect_state=await api.verify_connect()
