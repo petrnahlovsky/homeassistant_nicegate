@@ -111,21 +111,32 @@ class NiceGateApi:
         try:
             while True:
                 await asyncio.sleep(60)
+                if self._loop_task is None or self._loop_task.done():
+                    _LOGGER.warning("Receive loop is not running, dropping connection")
+                    break
                 await self.status()
+        except asyncio.CancelledError:
+            raise
         except Exception:
-            _LOGGER.exception()
-        await self.disconnect()
+            _LOGGER.exception("Keep alive loop failed")
+        finally:
+            await self.disconnect()
 
     async def __recvloop(self):
+        writer = self.serv_writer
         try:
             while True:
                 msg = await self.__recvall()
                 if msg == "":
                     break
                 await self.__process_event(msg)
+        except asyncio.CancelledError:
+            raise
         except Exception:
-            _LOGGER.exception()
-        await self.disconnect()
+            _LOGGER.exception("Receive loop failed")
+        finally:
+            if self.serv_writer is writer:
+                await self.disconnect()
 
     # Get all data from socket
     async def __recvall(self, reader=None):
@@ -217,9 +228,12 @@ class NiceGateApi:
                 if self.update_callback is not None:
                     await self.update_callback()
 
-    async def _ensure_connected(self)->bool:
+    async def _ensure_connected(self) -> bool:
         if self.serv_writer is not None and self.serv_reader is not None:
-            return True
+            if not self.serv_writer.is_closing():
+                return True
+            _LOGGER.debug("Socket is closing, reconnecting")
+            await self.disconnect()
         return await self.connect()
 
     async def pair(self, setup_code:str)->str:
