@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 from datetime import timedelta
 import logging
+import time
 from typing import Any
 
 import async_timeout
@@ -40,7 +41,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up the Nice gate cover."""
     api = hass.data[DOMAIN][entry.entry_id]
-    coordinator=NiceCoordinator(hass, api)
+    coordinator=NiceCoordinator(hass, api, entry)
     await coordinator.async_config_entry_first_refresh()
     async_add_entities([NiceGate(coordinator, entry.data["mac"])])
 
@@ -48,7 +49,7 @@ async def async_setup_entry(
 class NiceCoordinator(DataUpdateCoordinator):
     """Nice gate custom coordinator."""
 
-    def __init__(self, hass:HomeAssistant, api:NiceGateApi)->None:
+    def __init__(self, hass:HomeAssistant, api:NiceGateApi, entry=None)->None:
         """Initialize."""
         super().__init__(
             hass,
@@ -56,9 +57,12 @@ class NiceCoordinator(DataUpdateCoordinator):
             # Name of the data. For logging purposes.
             name="Nice Gate",
             # Polling interval. Will only be polled if there are subscribers.
-            update_interval=timedelta(minutes=4),
+            update_interval=timedelta(minutes=1),
         )
         self.api = api
+        self.entry = entry
+        self._failures = 0
+        self._last_reload = 0.0
         self.api.set_update_callback(self.async_api_updated)
 
     @callback
@@ -74,18 +78,37 @@ class NiceCoordinator(DataUpdateCoordinator):
         This is the place to pre-process the data to lookup tables
         so entities can quickly look up their data.
         """
+        ok = False
         try:
-            # Note: asyncio.TimeoutError and aiohttp.ClientError are already
-            # handled by the data update coordinator.
-            async with async_timeout.timeout(10000):
-                await self.api.status()
-        # except ApiAuthError as err:
-        #     # Raising ConfigEntryAuthFailed will cancel future updates
-        #     # and start a config flow with SOURCE_REAUTH (async_step_reauth)
-        #     raise ConfigEntryAuthFailed from err
-        except:
-            raise UpdateFailed(f"Error communicating with API")
-        return self.api.gate_status
+            async with async_timeout.timeout(30):
+                ok = await self.api.status()
+        except Exception as ex:
+            _LOGGER.debug("Status request failed: %s", ex)
+            ok = False
+
+        if ok:
+            self._failures = 0
+            return self.api.gate_status
+
+        self._failures += 1
+        _LOGGER.warning("No answer from IT4WIFI (%s in a row)", self._failures)
+        if self._failures >= 3:
+            await self.__reload_entry()
+        raise UpdateFailed("Error communicating with API")
+
+    async def __reload_entry(self):
+        """Reload the config entry, the same thing as doing it by hand."""
+        if self.entry is None:
+            return
+        if time.monotonic() - self._last_reload < 600:
+            _LOGGER.debug("Reload skipped, done less than 10 minutes ago")
+            return
+        self._last_reload = time.monotonic()
+        self._failures = 0
+        _LOGGER.warning("Reloading Nice gate integration")
+        self.hass.async_create_task(
+            self.hass.config_entries.async_reload(self.entry.entry_id)
+        )
 
 
 class NiceGate(CoordinatorEntity, CoverEntity):
