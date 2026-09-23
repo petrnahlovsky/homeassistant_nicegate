@@ -7,6 +7,7 @@ import logging
 import random
 import re
 import ssl
+import time
 
 import defusedxml.ElementTree as ET
 
@@ -42,6 +43,8 @@ class NiceGateApi:
         self._keep_alive_task: asyncio.Task = None
         self._loop_task: asyncio.Task = None
         self.update_callback = None
+        # Monotonic timestamp of the last message received from IT4WIFI
+        self._last_rx: float = 0.0
 
     def set_update_callback(self, callback):
         """Register callback for update notification."""
@@ -108,19 +111,36 @@ class NiceGateApi:
         return ("\u0002" + xml + "\u0003").encode()
 
     async def __keep_alive_loop(self):
+        """Ping the module and drop the connection when it stops answering."""
         try:
             while True:
                 await asyncio.sleep(60)
                 if self._loop_task is None or self._loop_task.done():
                     _LOGGER.warning("Receive loop is not running, dropping connection")
                     break
-                await self.status()
+                if not await self.__ping_alive():
+                    _LOGGER.warning("No answer from IT4WIFI, dropping connection")
+                    break
         except asyncio.CancelledError:
             raise
         except Exception:
             _LOGGER.exception("Keep alive loop failed")
         finally:
             await self.disconnect()
+
+    async def __ping_alive(self, attempts: int = 2, timeout: int = 15) -> bool:
+        """Send STATUS and wait for any incoming message. True if module answered."""
+        for attempt in range(attempts):
+            before = self._last_rx
+            await self.status()
+            waited = 0.0
+            while waited < timeout:
+                await asyncio.sleep(1)
+                waited += 1
+                if self._last_rx > before:
+                    return True
+            _LOGGER.debug("No answer within %ss (attempt %s)", timeout, attempt + 1)
+        return False
 
     async def __recvloop(self):
         writer = self.serv_writer
@@ -165,6 +185,7 @@ class NiceGateApi:
                     _LOGGER.debug(data)
                     break
         answer = data.decode()
+        self._last_rx = time.monotonic()
         self.__find_session_id(answer)
         return answer
 
@@ -367,6 +388,7 @@ class NiceGateApi:
             reader, writer = await asyncio.open_connection(self.host, 443, ssl=ctx)
             self.serv_reader = reader
             self.serv_writer = writer
+            self._last_rx = time.monotonic()
 
             if self.skip_verify:
                 verify = "Authentication id=0"
