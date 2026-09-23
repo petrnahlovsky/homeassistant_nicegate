@@ -45,6 +45,9 @@ class NiceGateApi:
         self.update_callback = None
         # Monotonic timestamp of the last message received from IT4WIFI
         self._last_rx: float = 0.0
+        # Guards against reconnect storms
+        self._last_connect: float = 0.0
+        self._connect_lock = asyncio.Lock()
 
     def set_update_callback(self, callback):
         """Register callback for update notification."""
@@ -249,6 +252,14 @@ class NiceGateApi:
                 if self.update_callback is not None:
                     await self.update_callback()
 
+    def __reset_session(self):
+        """Reset session state, same as a freshly created API object."""
+        self.client_challenge = f"{random.randint(1, 9999999):08x}".upper()
+        self.server_challenge = ""
+        self.command_sequence = 1
+        self.command_id = 0
+        self.session_id = 1
+
     async def _ensure_connected(self) -> bool:
         if self.serv_writer is not None and self.serv_reader is not None:
             if not self.serv_writer.is_closing():
@@ -256,6 +267,27 @@ class NiceGateApi:
             _LOGGER.debug("Socket is closing, reconnecting")
             await self.disconnect()
         return await self.connect()
+
+    async def __send(self, command_type, body, retry=True) -> bool:
+        """Send a message, reconnect and retry once when the write fails."""
+        if not await self._ensure_connected():
+            return False
+        writer = self.serv_writer
+        if writer is None or writer.is_closing():
+            if retry:
+                await self.disconnect()
+                return await self.__send(command_type, body, retry=False)
+            return False
+        try:
+            writer.write(self.__build_message(command_type, body))
+            await writer.drain()
+            return True
+        except Exception as ex:
+            _LOGGER.warning("Send of %s failed: %s", command_type, ex)
+            await self.disconnect()
+            if retry:
+                return await self.__send(command_type, body, retry=False)
+            return False
 
     async def pair(self, setup_code:str)->str:
         self.pwd=None
@@ -370,6 +402,17 @@ class NiceGateApi:
 
     async def connect(self):
         """Connect to IT4WIFI."""
+        async with self._connect_lock:
+            if self.serv_writer is not None and not self.serv_writer.is_closing():
+                return True
+            since = time.monotonic() - self._last_connect
+            if since < 5:
+                await asyncio.sleep(5 - since)
+            self._last_connect = time.monotonic()
+            return await self.__connect()
+
+    async def __connect(self):
+        """Open the connection with a fresh session."""
         try:
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS)
             ctx.check_hostname = False
@@ -384,6 +427,7 @@ class NiceGateApi:
             if self._keep_alive_task is not None:
                 self._keep_alive_task.cancel()
 
+            self.__reset_session()
             await asyncio.sleep(0.01)
             reader, writer = await asyncio.open_connection(self.host, 443, ssl=ctx)
             self.serv_reader = reader
@@ -420,39 +464,27 @@ class NiceGateApi:
             _LOGGER.error(ex, exc_info=True)
         return False
 
-    async def status(self, cmd="STATUS"):
-        """Get IT4WIFI status."""
-        if await self._ensure_connected():
-            msg= self.__build_message(cmd, "")
-            self.serv_writer.write(msg)
-            await self.serv_writer.drain()
+    async def status(self, cmd="STATUS") -> bool:
+        """Get IT4WIFI status. Returns False when the message could not be sent."""
+        return await self.__send(cmd, "")
 
     async def info(self, cmd="INFO"):
         """Get IT4WIFI info."""
-        if await self._ensure_connected():
-            msg = self.__build_message(cmd, "")
-            self.serv_writer.write(msg)
-            await self.serv_writer.drain()
+        await self.__send(cmd, "")
 
     async def change(self, command):
         """Open, close or stop gates."""
-        if await self._ensure_connected():
-            msg = self.__build_message(
-                "CHANGE",
-                f'<Devices><Device id="1">\n<Services><DoorAction>{command}</DoorAction>\n</Services ></Device></Devices>',
-            )
-            self.serv_writer.write(msg)
-            await self.serv_writer.drain()
+        await self.__send(
+            "CHANGE",
+            f'<Devices><Device id="1">\n<Services><DoorAction>{command}</DoorAction>\n</Services ></Device></Devices>',
+        )
 
     async def t4(self, code: str):
         """Send T4 command (e.g. MDAx = step by step)."""
-        if await self._ensure_connected():
-            msg = self.__build_message(
-                "CHANGE",
-                f'<Devices><Device id="1">\n<Services><T4Action>{code}</T4Action>\n</Services ></Device></Devices>',
-            )
-            self.serv_writer.write(msg)
-            await self.serv_writer.drain()
+        await self.__send(
+            "CHANGE",
+            f'<Devices><Device id="1">\n<Services><T4Action>{code}</T4Action>\n</Services ></Device></Devices>',
+        )
 
     def t4_supported(self, bit: int) -> bool:
         """Return True if T4 command is supported or support is unknown."""
@@ -462,13 +494,10 @@ class NiceGateApi:
 
     async def check(self):
         """Ping for prevent sokcet close."""
-        if await self._ensure_connected():
-            msg= self.__build_message(
-                "CHECK",
-                f'<Authentication id="{self.session_id}" username="{self.username}"/>',
-            )
-            self.serv_writer.write(msg)
-            await self.serv_writer.drain()
+        await self.__send(
+            "CHECK",
+            f'<Authentication id="{self.session_id}" username="{self.username}"/>',
+        )
 
     async def disconnect(self):
         """Disconnect from IT4WIFI."""
