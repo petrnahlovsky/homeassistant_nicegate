@@ -504,6 +504,19 @@ class NiceGateApi:
         self.command_id = 0
         self.command_sequence = 1
         if self.serv_writer is not None:
-            self.serv_writer.close()
+            try:
+                self.serv_writer.close()
+            except Exception as ex:
+                _LOGGER.debug("Closing the socket failed: %s", ex)
         self.serv_writer = None
         self.serv_reader = None
+
+    async def shutdown(self):
+        """Stop background tasks and close the connection."""
+        current = asyncio.current_task()
+        for task in (self._keep_alive_task, self._loop_task):
+            if task is not None and task is not current and not task.done():
+                task.cancel()
+        self._keep_alive_task = None
+        self._loop_task = None
+        await self.disconnect()
