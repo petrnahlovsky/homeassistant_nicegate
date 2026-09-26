@@ -45,6 +45,8 @@ class NiceGateApi:
         self.update_callback = None
         # Monotonic timestamp of the last message received from IT4WIFI
         self._last_rx: float = 0.0
+        # Incremented on every STATUS response received from IT4WIFI
+        self._status_seq: int = 0
         # Guards against reconnect storms
         self._last_connect: float = 0.0
         self._connect_lock = asyncio.Lock()
@@ -132,16 +134,10 @@ class NiceGateApi:
             await self.disconnect()
 
     async def __ping_alive(self, attempts: int = 2, timeout: int = 15) -> bool:
-        """Send STATUS and wait for any incoming message. True if module answered."""
+        """Send STATUS and wait for the response. True if module answered."""
         for attempt in range(attempts):
-            before = self._last_rx
-            await self.status()
-            waited = 0.0
-            while waited < timeout:
-                await asyncio.sleep(1)
-                waited += 1
-                if self._last_rx > before:
-                    return True
+            if await self.status(timeout=timeout):
+                return True
             _LOGGER.debug("No answer within %ss (attempt %s)", timeout, attempt + 1)
         return False
 
@@ -248,6 +244,7 @@ class NiceGateApi:
                 self.gate_status = resp.findtext(
                     "./Devices/Device/Properties/DoorStatus"
                 )
+                self._status_seq += 1
                 _LOGGER.debug("Status received %s", self.gate_status)
                 if self.update_callback is not None:
                     await self.update_callback()
@@ -464,9 +461,21 @@ class NiceGateApi:
             _LOGGER.error(ex, exc_info=True)
         return False
 
-    async def status(self, cmd="STATUS") -> bool:
-        """Get IT4WIFI status. Returns False when the message could not be sent."""
-        return await self.__send(cmd, "")
+    async def status(self, cmd="STATUS", timeout: float = 10) -> bool:
+        """Ask IT4WIFI for status. True only when a STATUS response arrived in time."""
+        if not await self._ensure_connected():
+            return False
+        before = self._status_seq
+        if not await self.__send(cmd, ""):
+            return False
+        waited = 0.0
+        while waited < timeout:
+            await asyncio.sleep(0.5)
+            waited += 0.5
+            if self._status_seq != before:
+                return True
+        _LOGGER.warning("No answer to %s within %ss", cmd, timeout)
+        return False
 
     async def info(self, cmd="INFO"):
         """Get IT4WIFI info."""
