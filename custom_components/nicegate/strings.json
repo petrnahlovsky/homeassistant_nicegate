@@ -33,5 +33,18 @@
     "abort": {
       "already_configured": "Device is already configured"
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Nice gate options",
+        "data": {
+          "reload_interval": "Periodic reload interval (minutes)"
+        },
+        "data_description": {
+          "reload_interval": "The integration is reloaded periodically, the same as the Reload button in the UI. 0 disables it."
+        }
+      }
+    }
   }
 }
