@@ -1,0 +1,50 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "data": {
+          "host": "Host",
+          "mac": "MAC address",
+          "username": "Username",
+          "mynice_email": "MyNice e-mail (optional)",
+          "mynice_password": "MyNice password (optional)"
+        },
+        "data_description": {
+          "username": "Required only in special cases. Don't use existing username!",
+          "mynice_email": "Load gate credentials from your MyNice account. Pairing is skipped. The password is not stored."
+        }
+      },
+      "pair": {
+        "title": "Pairing device",
+        "data": {
+          "setup_code": "Setup code"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect",
+      "invalid_auth": "Invalid authentication",
+      "unknown": "Unexpected error",
+      "waiting_permission": "Waiting for permission to connect. Open mobile app and allow user to connect, than retry here.",
+      "cloud_auth": "MyNice login failed, check e-mail and password.",
+      "cloud_not_found": "No IT4WIFI with this MAC address found in the MyNice account.",
+      "cloud_error": "MyNice cloud is not reachable, see the log."
+    },
+    "abort": {
+      "already_configured": "Device is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Nastavení brány Nice",
+        "data": {
+          "reload_interval": "Interval pravidelného znovunačtení (minuty)"
+        },
+        "data_description": {
+          "reload_interval": "Integrace se pravidelně znovu načte stejně jako tlačítkem Znovu načíst v GUI. 0 vypne."
+        }
+      }
+    }
+  }
+}
